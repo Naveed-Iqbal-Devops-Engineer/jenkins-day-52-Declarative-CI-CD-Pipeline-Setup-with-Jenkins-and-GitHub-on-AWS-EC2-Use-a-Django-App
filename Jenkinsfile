@@ -1,73 +1,58 @@
 pipeline {
     agent any
 
-    // webhook trigger block yahan hona chahiye
-    triggers {
-        githubPush()
-    }
-
-    environment {
-        IMAGE_NAME = 'thedevopsengineer/jenkins53'
-        DOCKER_CREDENTIALS_ID = 'dockerhub'
-    }
-
     stages {
-        stage('Clone Repo') {
+        stage('Clone Repository') {
             steps {
-                git branch: 'main', url: 'https://github.com/Naveed-Iqbal-Devops-Engineer/1repo.git'
+                git branch: 'main', url: 'https://github.com/Naveed-Iqbal-Devops-Engineer/jenkins-day-52-Declarative-CI-CD-Pipeline-Setup-with-Jenkins-and-GitHub-on-AWS-EC2-Use-a-Django-App.git/'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Setup Virtual Environment') {
             steps {
-                script {
-                    env.IMAGE_TAG = "${IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    sh "docker build -t ${env.IMAGE_TAG} ."
-                }
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                '''
             }
         }
 
-        stage('Login to Docker Hub') {
+        stage('Install Dependencies') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: "${DOCKER_CREDENTIALS_ID}",
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                }
+                sh '''
+                    . venv/bin/activate
+                    pip install -r requirements.txt
+                '''
             }
         }
 
-        stage('Push Image to Docker Hub') {
+        stage('Run Migrations') {
             steps {
-                sh "docker push ${env.IMAGE_TAG}"
+                sh '''
+                    . venv/bin/activate
+                    python manage.py makemigrations
+                    python manage.py migrate
+                '''
             }
         }
 
-        stage('Deploy Dev and Staging') {
+        stage('Run Django App') {
             steps {
-                script {
-                    def containers = ['dev': 8001, 'staging': 8002]
-                    containers.each { envName, port ->
-                        def containerName = "django-notes-${envName}"
-                        sh """
-                            docker rm -f ${containerName} || true
-                            docker run -d --name ${containerName} \\
-                            -p ${port}:8000 ${env.IMAGE_TAG}
-                        """
-                    }
-                }
+                sh '''
+                    . venv/bin/activate
+                     python manage.py runserver 0.0.0.0:8000
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "✅ Dev on 8001 | Staging on 8002"
+            echo '✅ Deployment successful. Django app running on port 8000 (using runserver).'
         }
         failure {
-            echo "❌ Deployment failed"
+            echo '❌ Deployment failed. Check logs.'
         }
     }
 }
